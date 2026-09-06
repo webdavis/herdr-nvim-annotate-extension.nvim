@@ -10,7 +10,8 @@ herdr-nvim's own keys list it, paste it and send it. Nothing here types at an ag
 A stored annotation looks like this:
 
 ```
-@lua/config/lsp.lua:118 | ERROR: undefined global `vim_opt` | function M.setup | blame 4f2a91c wire the language servers
+@lua/config/lsp.lua:118 | ERROR: undefined global `vim_opt` | function M.setup | blame 4f2a91c wire the
+language servers
 ```
 
 A part that does not apply is left out instead of written empty, so a line with no diagnostic and no
