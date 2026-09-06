@@ -1,0 +1,123 @@
+*herdr-nvim-annotate-extension.txt*   Annotate a line for an agent to read
+
+==============================================================================
+CONTENTS                              *herdr-nvim-annotate-extension-contents*
+
+  1. Introduction ....... |herdr-nvim-annotate-extension-introduction|
+  2. Requirements ....... |herdr-nvim-annotate-extension-requirements|
+  3. Install ............ |herdr-nvim-annotate-extension-install|
+  4. Command ............ |herdr-nvim-annotate-extension-command|
+  5. Lua API ............ |herdr-nvim-annotate-extension-api|
+  6. Health ............. |herdr-nvim-annotate-extension-health|
+
+==============================================================================
+1. INTRODUCTION                   *herdr-nvim-annotate-extension-introduction*
+
+Annotate the line under the cursor with what an agent would otherwise make
+you retype: the path and line number, the diagnostic sitting on it, the
+function it lives inside, and the commit that last touched it.
+
+The annotation goes into herdr-nvim's comment store, so herdr-nvim's own keys
+list it, paste it and send it. Nothing here types at an agent.
+
+A stored annotation looks like this: >
+
+    @lua/config/lsp.lua:118 | ERROR: undefined global `vim_opt` |
+    function M.setup | blame 4f2a91c wire the language servers
+<
+A part that does not apply is left out instead of written empty, so a line
+with no diagnostic and no commit behind it annotates as
+`@lua/config/lsp.lua:118` on its own.
+
+==============================================================================
+2. REQUIREMENTS                   *herdr-nvim-annotate-extension-requirements*
+
+- Neovim new enough to have `vim.system`, `vim.uv` and `vim.health`. Developed
+  and tested on 0.12.5.
+- ChmaraX/herdr-nvim, which owns the store the annotation goes into.
+- `git` on `PATH`, for the blame part. Without it the other three parts still
+  work.
+- A treesitter parser attached to the buffer, for the function part.
+
+==============================================================================
+3. INSTALL                             *herdr-nvim-annotate-extension-install*
+
+With lazy.nvim: >lua
+
+    {
+      "webdavis/herdr-nvim-annotate-extension.nvim",
+      dependencies = { "ChmaraX/herdr-nvim" },
+      keys = {
+        {
+          "<leader>Cx",
+          "<cmd>HerdrAnnotateLine<cr>",
+          desc = "Annotate line with diagnostic and blame",
+        },
+      },
+    }
+<
+There is no `setup()` call. That `keys` row is the whole configuration, and
+`<leader>Cx` is only an example: bind whichever key is free in your own
+layout.
+
+==============================================================================
+4. COMMAND                             *herdr-nvim-annotate-extension-command*
+
+                                                          *:HerdrAnnotateLine*
+:HerdrAnnotateLine      Annotate the cursor's line and decorate it in the
+                        buffer. After that the annotation belongs to
+                        herdr-nvim, whose keys list the pending comments,
+                        paste them into an agent's input, or send them.
+
+                        Three kinds of buffer produce no file reference worth
+                        annotating, and the command refuses them with a
+                        message saying which one it hit: a buffer with no
+                        name, a buffer with any 'buftype' (a terminal, a
+                        quickfix list, a help window), and a buffer whose name
+                        is a URI rather than a path, such as an `oil://`
+                        directory listing.
+
+==============================================================================
+5. LUA API                                 *herdr-nvim-annotate-extension-api*
+
+                                     *herdr-nvim-annotate-extension.line()*
+line()                  Annotate the cursor's line. Returns the new comment's
+                        id, or nil plus the reason the buffer was refused.
+
+                        It notifies nothing, which is what lets a config route
+                        a refusal through its own error handling.
+                        |:HerdrAnnotateLine| is the wrapper that reports one.
+
+                                      *herdr-nvim-annotate-extension.store()*
+store({bufnr}, {line}, {parts})
+                        Join {parts} with `PART_SEPARATOR` below, store the
+                        result against {line} of {bufnr}, and decorate it.
+                        Returns the new comment's id. {parts} is a table with
+                        any of `mention`, `diagnostic`, `func` and `blame`; a
+                        missing one contributes nothing at all.
+
+                             *herdr-nvim-annotate-extension.PART_SEPARATOR*
+PART_SEPARATOR          What goes between the parts of a stored annotation,
+                        " | " by default.
+
+                        The parts land on a single line because herdr-nvim's
+                        comment list builds one buffer line per comment, and
+                        |nvim_buf_set_lines()| rejects a string holding a
+                        newline. Set this to "\n" once herdr-nvim can render a
+                        multi-line comment, or to anything else you would
+                        rather read.
+
+The pure half lives in `herdr-nvim-annotate-extension.compose`:
+`compose_text`, `enclosing_function`, `blame_line`, `diagnostic_line` and
+`annotatable`. None of them touch a buffer, so you can call and test them on
+their own.
+
+==============================================================================
+6. HEALTH                               *herdr-nvim-annotate-extension-health*
+
+`:checkhealth herdr-nvim-annotate-extension` reports whether herdr-nvim is
+loadable and whether git is on `PATH`. A missing herdr-nvim is an error, since
+there is nowhere to store an annotation without it. A missing git is a
+warning, because only the blame part needs it.
+
+vim:tw=78:ts=8:ft=help:norl:
