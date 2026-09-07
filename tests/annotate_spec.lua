@@ -225,6 +225,41 @@ return {
     assert(id == 4242, "returned " .. vim.inspect(id))
   end,
 
+  ["flattens embedded line breaks in every part at the store boundary"] = function()
+    local added, _, ok, id = with_fake_store(function()
+      return annotate.store(7, 42, {
+        mention = "@first\nsecond:42",
+        diagnostic = "ERROR: first\r\nsecond",
+        func = "function first\rsecond",
+        blame = "blame a1b2c3d first\nsecond",
+      })
+    end)
+    assert(ok, id)
+    assert(
+      added.text == "@first second:42 | ERROR: first second | function first second | blame a1b2c3d first second",
+      "stored " .. vim.inspect(added.text)
+    )
+  end,
+
+  ["omits a part that becomes empty when the sink flattens it"] = function()
+    local added, _, ok, id = with_fake_store(function()
+      return annotate.store(7, 42, { mention = "@init.lua:42", diagnostic = " \r\n\t ", blame = "blame a1b2c3d" })
+    end)
+    assert(ok, id)
+    assert(added.text == "@init.lua:42 | blame a1b2c3d", "stored " .. vim.inspect(added.text))
+  end,
+
+  ["normalizes parts without replacing a configured separator"] = function()
+    local previous = annotate.PART_SEPARATOR
+    annotate.PART_SEPARATOR = " / "
+    local added, _, ok, id = with_fake_store(function()
+      return annotate.store(7, 42, { mention = "@init.lua:42", diagnostic = "ERROR: first\nsecond" })
+    end)
+    annotate.PART_SEPARATOR = previous
+    assert(ok, id)
+    assert(added.text == "@init.lua:42 / ERROR: first second", "stored " .. vim.inspect(added.text))
+  end,
+
   ["walks up to the enclosing function node"] = function()
     local node = chain({ "identifier", "arguments", "function_declaration", "chunk" })
     local found = compose.enclosing_function(node)
