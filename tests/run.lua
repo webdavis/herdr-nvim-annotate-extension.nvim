@@ -2,12 +2,10 @@
 --
 -- Usage: nvim --headless --clean -l tests/run.lua [<name>_spec]
 --
--- `--clean` keeps every plugin out, herdr-nvim included, which is the point:
--- this plugin depends on herdr-nvim at the sink and on nothing else, so
--- everything but the sink must hold with nothing installed, and the sink is
--- checked against a fake in `package.loaded`. A spec file returns a table of
--- `["what it does"] = function() ... end` cases and asserts with plain
--- `assert`. No plenary, no busted.
+-- `--clean` keeps plugins out. Store tests use a fake herdr-nvim in
+-- `package.loaded`; editor tests use Neovim's diagnostic and parser APIs.
+-- A spec file returns a table of `["what it does"] = function() ... end`
+-- cases and asserts with plain `assert`. No plenary, no busted.
 
 local tests_dir = arg[0]:match("(.*)/") or "."
 local project_root = tests_dir .. "/.."

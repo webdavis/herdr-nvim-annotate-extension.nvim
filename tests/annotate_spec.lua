@@ -1,8 +1,5 @@
--- The pure composer, and the sink that hands its text to herdr-nvim.
---
--- `annotate.line()` reads the cursor, the diagnostic store, a treesitter tree
--- and git. What is pinned here is the composer, the node-type filter, the blame
--- formatter and the sink, each of which takes plain data.
+-- Composition, the store boundary, and the editor paths that supply parts.
+-- The missing-Git case reaches the real process edge with an empty search path.
 
 local annotate = require("herdr-nvim-annotate-extension")
 local compose = require("herdr-nvim-annotate-extension.compose")
