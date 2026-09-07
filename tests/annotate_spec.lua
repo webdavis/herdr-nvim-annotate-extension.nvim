@@ -260,6 +260,42 @@ return {
     assert(added.text == "@init.lua:42 / ERROR: first second", "stored " .. vim.inspect(added.text))
   end,
 
+  ["missing git preserves the editor parts and stores without notifying"] = function()
+    local previous_buf = vim.api.nvim_get_current_buf()
+    local previous_path = vim.env.PATH
+    local previous_notify = vim.notify
+    local notices = {}
+    local bufnr = vim.api.nvim_create_buf(false, false)
+    local file = vim.fn.tempname() .. ".lua"
+    vim.api.nvim_buf_set_name(bufnr, file)
+    file = vim.api.nvim_buf_get_name(bufnr)
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "local function answer()", "  return 1", "end" })
+    vim.bo[bufnr].filetype = "lua"
+    vim.api.nvim_set_current_buf(bufnr)
+    vim.treesitter.get_parser(bufnr, "lua"):parse()
+    vim.api.nvim_win_set_cursor(0, { 2, 2 })
+    vim.diagnostic.set(vim.api.nvim_create_namespace("annotate-missing-git"), bufnr, {
+      { lnum = 1, col = 2, severity = vim.diagnostic.severity.WARN, message = "first\nsecond" },
+    })
+    vim.notify = function(message)
+      notices[#notices + 1] = message
+    end
+    vim.env.PATH = vim.fn.tempname()
+    local added, decorated, ok, id = with_fake_store(annotate.line)
+    vim.env.PATH = previous_path
+    vim.notify = previous_notify
+    vim.api.nvim_set_current_buf(previous_buf)
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+
+    assert(ok, id)
+    assert(id == 4242 and decorated == id, "annotation was not stored and decorated")
+    assert(
+      added.text == "@" .. vim.fn.fnamemodify(file, ":.") .. ":2 | WARN: first second | function answer",
+      "stored " .. vim.inspect(added.text)
+    )
+    assert(#notices == 0, "line() notified: " .. vim.inspect(notices))
+  end,
+
   ["walks up to the enclosing function node"] = function()
     local node = chain({ "identifier", "arguments", "function_declaration", "chunk" })
     local found = compose.enclosing_function(node)
