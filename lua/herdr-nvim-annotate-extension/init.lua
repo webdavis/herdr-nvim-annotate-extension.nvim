@@ -96,7 +96,8 @@ end
 ---@param parts { mention: string?, diagnostic: string?, func: string?, blame: string? }
 ---@return integer id the new comment's id
 function M.store(bufnr, line, parts)
-  local text = compose.compose_text(parts, M.PART_SEPARATOR)
+  local normalized = vim.tbl_map(compose.one_line, parts or {})
+  local text = compose.compose_text(normalized, M.PART_SEPARATOR)
 
   local id = require("herdr-nvim.comments").add(bufnr, line, line, text)
   require("herdr-nvim.ui").decorate(id)

@@ -1,8 +1,7 @@
 -- `:checkhealth herdr-nvim-annotate-extension`
 --
--- Two things have to be true for an annotation to be written and read: the
--- store it goes into has to exist, and git has to be callable. Everything else
--- degrades to a missing part rather than a failure.
+-- The comment store is required. Git is optional; without it the annotation
+-- omits blame.
 
 local M = {}
 

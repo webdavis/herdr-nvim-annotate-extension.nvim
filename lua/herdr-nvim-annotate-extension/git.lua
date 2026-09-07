@@ -26,7 +26,11 @@ local compose = require("herdr-nvim-annotate-extension.compose")
 ---@return integer code
 ---@return string output
 function M.runner(opts)
-  local result = vim.system(opts.cmd, { text = true, stdin = opts.stdin, cwd = opts.cwd }):wait()
+  local ok, process = pcall(vim.system, opts.cmd, { text = true, stdin = opts.stdin, cwd = opts.cwd })
+  if not ok then
+    return 127, tostring(process)
+  end
+  local result = process:wait()
 
   -- stderr joins the value only on failure, so a tool that warns on stderr
   -- cannot glue its notice onto output the caller is about to read.

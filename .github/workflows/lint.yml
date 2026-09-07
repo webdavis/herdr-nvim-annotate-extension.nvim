@@ -1,0 +1,26 @@
+name: Lint
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install test and lint tools
+        run: brew install neovim stylua luacheck
+      - name: Check formatting
+        run: stylua --check lua plugin tests
+      - name: Lint Lua
+        run: luacheck lua plugin tests
+      - name: Run behavior tests
+        env:
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_SYSTEM: /dev/null
+        run: nvim --headless --clean -l tests/run.lua

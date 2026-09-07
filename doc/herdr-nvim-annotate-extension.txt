@@ -32,8 +32,7 @@ with no diagnostic and no commit behind it annotates as
 ==============================================================================
 2. REQUIREMENTS                   *herdr-nvim-annotate-extension-requirements*
 
-- Neovim new enough to have `vim.system`, `vim.uv` and `vim.health`. Developed
-  and tested on 0.12.5.
+- Neovim 0.11 or newer. Developed and tested on 0.12.5.
 - ChmaraX/herdr-nvim, which owns the store the annotation goes into.
 - `git` on `PATH`, for the blame part. Without it the other three parts still
   work.
@@ -46,7 +45,8 @@ With lazy.nvim: >lua
 
     {
       "webdavis/herdr-nvim-annotate-extension.nvim",
-      dependencies = { "ChmaraX/herdr-nvim" },
+      dependencies = { { "ChmaraX/herdr-nvim", opts = {} } },
+      cmd = "HerdrAnnotateLine",
       keys = {
         {
           "<leader>Cx",
@@ -56,9 +56,11 @@ With lazy.nvim: >lua
       },
     }
 <
-There is no `setup()` call. That `keys` row is the whole configuration, and
-`<leader>Cx` is only an example: bind whichever key is free in your own
-layout.
+Lazy initializes herdr-nvim through the dependency's `opts` table, which
+enables its default list, paste, and send mappings. The `cmd` entry loads the
+extension on the first :HerdrAnnotateLine call. `<leader>Cx` is an example:
+bind whichever key is free in your layout. The extension has no `setup()`
+function.
 
 ==============================================================================
 4. COMMAND                             *herdr-nvim-annotate-extension-command*
@@ -90,8 +92,10 @@ line()                  Annotate the cursor's line. Returns the new comment's
 
                                       *herdr-nvim-annotate-extension.store()*
 store({bufnr}, {line}, {parts})
-                        Join {parts} with `PART_SEPARATOR` below, store the
-                        result against {line} of {bufnr}, and decorate it.
+                        Collapse whitespace within each part, omit parts that
+                        become empty, and join them with `PART_SEPARATOR`
+                        below. Store the result against {line} of {bufnr} and
+                        decorate it.
                         Returns the new comment's id. {parts} is a table with
                         any of `mention`, `diagnostic`, `func` and `blame`; a
                         missing one contributes nothing at all.

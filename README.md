@@ -19,7 +19,7 @@ commit behind it annotates as `@lua/config/lsp.lua:118` on its own.
 
 ## Requirements
 
-- Neovim new enough to have `vim.system`, `vim.uv` and `vim.health`. Developed and tested on 0.12.5.
+- Neovim 0.11 or newer. Developed and tested on 0.12.5.
 - [ChmaraX/herdr-nvim](https://github.com/ChmaraX/herdr-nvim), which owns the store the annotation
   goes into.
 - `git` on `PATH`, for the blame part. Without it the other three parts still work.
@@ -32,15 +32,18 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   "webdavis/herdr-nvim-annotate-extension.nvim",
-  dependencies = { "ChmaraX/herdr-nvim" },
+  dependencies = { { "ChmaraX/herdr-nvim", opts = {} } },
+  cmd = "HerdrAnnotateLine",
   keys = {
     { "<leader>Cx", "<cmd>HerdrAnnotateLine<cr>", desc = "Annotate line with diagnostic and blame" },
   },
 }
 ```
 
-There is no `setup()` call. That `keys` row is the whole configuration, and `<leader>Cx` is only an
-example: bind whichever key is free in your own layout.
+Lazy initializes herdr-nvim through the dependency's `opts` table, which enables its default list,
+paste, and send mappings. The `cmd` entry loads the extension on the first `:HerdrAnnotateLine` call.
+`<leader>Cx` is an example: bind whichever key is free in your layout. The extension has no `setup()`
+function.
 
 ## Usage
 
@@ -69,9 +72,10 @@ annotate.PART_SEPARATOR              --> " | "
 `line()` notifies nothing, which is what lets a config route a refusal through its own error
 handling. `:HerdrAnnotateLine` is the wrapper that reports one.
 
-The parts land on a single line because herdr-nvim's comment list builds one buffer line per comment,
-and `nvim_buf_set_lines` rejects a string holding a newline. Set `PART_SEPARATOR` to `"\n"` once
-herdr-nvim can render a multi-line comment, or to anything else you would rather read.
+`store()` collapses whitespace within each part and omits parts that become empty before joining
+them. herdr-nvim's comment list needs a single line per comment: `nvim_buf_set_lines` rejects embedded
+newlines. `PART_SEPARATOR` controls the text between parts. Change it to `"\n"` once herdr-nvim
+supports multiline comments.
 
 `require("herdr-nvim-annotate-extension.compose")` holds the pure half: `compose_text`,
 `enclosing_function`, `blame_line`, `diagnostic_line` and `annotatable`. None of them touch a buffer,
@@ -83,8 +87,9 @@ so you can call and test them on their own.
 nvim --headless --clean -l tests/run.lua
 ```
 
-`--clean` matters here. Everything except the sink has to hold with no plugin installed at all, and
-the sink runs against a fake herdr-nvim in `package.loaded`.
+`--clean` keeps plugins out of the run. The suite covers composition, the store boundary, Git
+command results, and selected editor paths using Neovim's diagnostic and parser APIs. The store uses
+a fake herdr-nvim in `package.loaded`; the missing-Git case runs with an empty executable search path.
 
 ## License
 
