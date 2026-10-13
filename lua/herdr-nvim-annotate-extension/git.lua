@@ -72,57 +72,18 @@ local function parse_blame_porcelain(text)
   return { sha = sha, summary = summary ~= "" and summary or nil }
 end
 
--- What each `fileformat` puts between lines when the buffer is written out.
-local LINE_SEPARATOR = { unix = "\n", dos = "\r\n", mac = "\r" }
-
--- The text the editor is showing for `file`. Blaming the saved copy answers for
--- a line you may have already replaced, so what the buffer holds is
--- what goes to git; git reports a line that is only in the buffer as
--- uncommitted, which is the true answer. `line()` blames the current buffer, so
--- a name that does not match it means there is nothing unsaved.
---
--- These have to be the bytes the file itself would hold, not the lines glued
--- with LF and a newline stapled on: a `fileformat=dos` buffer rejoined with LF,
--- or a file with no trailing newline given one, differs from its own committed
--- blob, so every line of an UNCHANGED file blamed as uncommitted.
-local function buffer_contents(file)
-  if vim.api.nvim_buf_get_name(0) ~= file then
-    return nil
-  end
-
-  -- `binary` writes the buffer out with LF between the lines whatever
-  -- `fileformat` says, so it settles the separator before the format is read.
-  local separator = vim.bo.binary and "\n" or (LINE_SEPARATOR[vim.bo.fileformat] or "\n")
-  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-
-  -- A `fileformat=mac` buffer is split on carriage returns, and nvim shows an LF
-  -- byte sitting INSIDE one of those lines as a carriage return as well. Joining
-  -- with a carriage return would write the file's own LF back out as a line
-  -- break, so the two are told apart here: a carriage return still inside a line
-  -- is the LF it was read from.
-  if separator == "\r" then
-    lines = vim.tbl_map(function(line)
-      return (line:gsub("\r", "\n"))
-    end, lines)
-  end
-
-  local text = table.concat(lines, separator)
-
-  return vim.bo.endofline and text .. separator or text
-end
-
 -- ╭──────╮
 -- │  API │
 -- ╰──────╯
 
----@param opts { file: string, line: integer }
+---@param opts { file: string, line: integer, contents: string? }
 ---@return { sha: string, summary: string? }? commit
 function M.blame(opts)
   local file = opts.file
   local line = opts.line
 
   local range = ("%d,%d"):format(line, line)
-  local contents = buffer_contents(file)
+  local contents = opts.contents
 
   -- A symlink gives nvim the TARGET's text under the LINK's name, and the link's
   -- own blob holds a path rather than that text, so blaming the link compared

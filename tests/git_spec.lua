@@ -1,3 +1,4 @@
+local annotate = require("herdr-nvim-annotate-extension")
 local git = require("herdr-nvim-annotate-extension.git")
 
 local GIT_ENV = {
@@ -39,6 +40,27 @@ end
 local function blamed(opts)
   local commit = git.blame(opts)
   return commit and commit.summary
+end
+
+local function annotation_of_disk_line(file)
+  vim.cmd({ cmd = "edit", args = { file }, bang = true, mods = { silent = true } })
+  local bufnr = vim.api.nvim_get_current_buf()
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  local stored
+  package.loaded["herdr-nvim.comments"] = {
+    add = function(_, _, _, text)
+      stored = text
+      return 1
+    end,
+  }
+  package.loaded["herdr-nvim.ui"] = { decorate = function() end }
+  local ok, id, reason = pcall(annotate.line)
+  package.loaded["herdr-nvim.comments"] = nil
+  package.loaded["herdr-nvim.ui"] = nil
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+  assert(ok, id)
+  assert(id, reason)
+  return stored
 end
 
 local function with_runner(runner, body)
@@ -100,6 +122,21 @@ return {
     local link = vim.fs.dirname(file) .. "/link.txt"
     assert(vim.uv.fs_symlink(file, link))
     assert(blamed({ file = link, line = 1 }) == "write the notes", vim.inspect(git.blame({ file = link, line = 1 })))
+  end,
+
+  ["blames an unmodified latin-1 file as committed"] = function()
+    local file, sha = committed("caf\233\n")
+    local text = annotation_of_disk_line(file)
+    assert(text:match("blame .*$") == "blame " .. sha:sub(1, 7) .. " write the notes", vim.inspect(text))
+  end,
+
+  ["blames the unsaved text it is handed instead of the file"] = function()
+    local file = committed("first line\nsecond line\n")
+    local contents = "first line\nchanged\n"
+    local first = git.blame({ file = file, line = 1, contents = contents })
+    local second = git.blame({ file = file, line = 2, contents = contents })
+    assert(first and first.summary == "write the notes", vim.inspect(first))
+    assert(second == nil, vim.inspect(second))
   end,
 
   ["reports nothing for a line of zero sha digits, whatever their count"] = function()
