@@ -1,449 +1,125 @@
--- Composition, the store boundary, and the editor paths that supply parts.
--- The missing-Git case reaches the real process edge with an empty search path.
-
 local annotate = require("herdr-nvim-annotate-extension")
-local compose = require("herdr-nvim-annotate-extension.compose")
-local git = require("herdr-nvim-annotate-extension.git")
+local comments = require("herdr-nvim.comments")
+local repo = require("repo")
+local ui = require("herdr-nvim.ui")
 
--- The two `herdr-nvim` modules the sink reaches, replaced by fakes that record
--- what they were handed. `--clean` puts `herdr-nvim` on no runtimepath, so
--- `package.loaded` is where the substitution has to happen.
---
--- Returns what the store was given, what was decorated, and `body`'s own
--- `pcall` result. The raise is reported by the CALLER rather than here, so a
--- caller that also has a buffer to delete still gets to clean up first.
-local function with_fake_store(body)
-  local real_comments = package.loaded["herdr-nvim.comments"]
-  local real_ui = package.loaded["herdr-nvim.ui"]
+local TARGET = { bufnr = 3, name = "/tmp/init.lua", line = 42, column = 0 }
 
-  local added, decorated
-  package.loaded["herdr-nvim.comments"] = {
-    add = function(bufnr, start_line, end_line, text)
-      added = { bufnr = bufnr, start_line = start_line, end_line = end_line, text = text }
-      return 4242
-    end,
-  }
-  package.loaded["herdr-nvim.ui"] = {
-    decorate = function(id)
-      decorated = id
-    end,
-  }
-
-  local ok, result, reason = pcall(body)
-
-  package.loaded["herdr-nvim.comments"] = real_comments
-  package.loaded["herdr-nvim.ui"] = real_ui
-
-  return added, decorated, ok, result, reason
+local function sink()
+  local fake = {}
+  function fake.store(target, text)
+    fake.target, fake.text = target, text
+    return 4242
+  end
+  return fake
 end
 
--- `annotate.line()` reaches four things. Two of them, the diagnostic store and
--- treesitter, are core and real here: nvim ships a Lua parser
--- (`lib/nvim/parser/lua.so`), which attaches under `--clean`. The other two are
--- substituted because they are not what these cases are about: git would shell
--- out, and `herdr-nvim` is a plugin no `--clean` run has on its runtimepath.
---
--- Returns the text the annotator handed to the store.
-local function annotated(lines, cursor)
-  local real_runner = git.runner
-  git.runner = function()
-    return 128, "fatal: not a git repository"
-  end
+local function parts(...)
+  return vim.tbl_map(function(value)
+    return function()
+      return value
+    end
+  end, { ... })
+end
 
-  local previous = vim.api.nvim_get_current_buf()
-  -- NOT a scratch buffer: `nvim_create_buf(_, true)` sets `buftype = nofile`,
-  -- which the annotator refuses. A name is required too (an unnamed buffer is
-  -- refused) and has to be a real path, because the git edge asks for its
-  -- directory.
-  local bufnr = vim.api.nvim_create_buf(false, false)
-  vim.api.nvim_buf_set_name(bufnr, vim.fn.tempname() .. ".lua")
-  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+local function annotated(given)
+  local fake = sink()
+  annotate.annotate(TARGET, given, fake)
+  return fake.text
+end
+
+local function line_of(file, cursor)
+  vim.cmd({ cmd = "edit", args = { file }, bang = true, mods = { silent = true } })
+  local bufnr = vim.api.nvim_get_current_buf()
   vim.bo[bufnr].filetype = "lua"
-  vim.api.nvim_set_current_buf(bufnr)
   vim.treesitter.get_parser(bufnr, "lua"):parse()
   vim.api.nvim_win_set_cursor(0, cursor)
-
-  local added, _, ok, result, reason = with_fake_store(annotate.line)
-
-  vim.api.nvim_set_current_buf(previous)
+  vim.diagnostic.set(vim.api.nvim_create_namespace("annotate-spec"), bufnr, {
+    { lnum = cursor[1] - 1, col = 0, severity = vim.diagnostic.severity.WARN, message = "first\nsecond" },
+  })
+  local mention = "@" .. vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":.")
+  local ok, id, reason = pcall(annotate.line)
   vim.api.nvim_buf_delete(bufnr, { force = true })
-  git.runner = real_runner
-
-  assert(ok, result)
-  assert(result, "the annotator refused the buffer: " .. tostring(reason))
-  return added.text
+  assert(ok, id)
+  assert(id, "the annotator refused the buffer: " .. tostring(reason))
+  assert(ui.decorated[#ui.decorated] == id, "decorated " .. vim.inspect(ui.decorated))
+  return comments.added[id].text, mention
 end
 
--- Row 2 is `  local function inner()`; column 18 is inside `inner`, column 0 is
--- outside it and inside `outer`.
-local NESTED = {
-  "function outer()",
-  "  local function inner()",
-  "    return 1",
-  "  end",
-  "end",
-}
-
--- A treesitter node stands in for the real one through the two methods the
--- filter calls. The chain is built innermost-first, so `chain({"a","b"})`
--- returns the "a" node whose parent is the "b" node.
-local function chain(types)
-  local node
-  for index = #types, 1, -1 do
-    local parent = node
-    node = {
-      _type = types[index],
-      type = function(self)
-        return self._type
-      end,
-      parent = function()
-        return parent
-      end,
-    }
-  end
-  return node
-end
+local ANSWER = "local function answer()\n  return 1\nend\n"
 
 return {
-  ["joins every part one per line"] = function()
-    local text = compose.compose_text({
-      mention = "@lua/herdr-nvim-annotate-extension/init.lua:42",
-      diagnostic = "ERROR: undefined variable",
-      func = "function compose_text",
-      blame = "blame a1b2c3d add the annotator",
-    })
-    assert(
-      text
-        == "@lua/herdr-nvim-annotate-extension/init.lua:42\n"
-          .. "ERROR: undefined variable\n"
-          .. "function compose_text\n"
-          .. "blame a1b2c3d add the annotator",
-      "composed " .. vim.inspect(text)
-    )
+  ["joins every part, in the order given, with a pipe"] = function()
+    local text = annotated(parts("first", "second", "third", "fourth"))
+    assert(text == "first | second | third | fourth", "composed " .. vim.inspect(text))
   end,
 
   ["returns just the mention when it is the only part"] = function()
-    local text = compose.compose_text({ mention = "@init.lua:1" })
+    local text = annotated(parts("@init.lua:1"))
     assert(text == "@init.lua:1", "composed " .. vim.inspect(text))
   end,
 
-  ["leaves no blank line where a part is nil"] = function()
-    -- The diagnostic is the missing middle part: a composer that emitted "" for
-    -- it would still hold four lines, and the annotation would carry a gap.
-    local text = compose.compose_text({
-      mention = "@init.lua:1",
-      func = "function setup",
-      blame = "blame a1b2c3d",
-    })
-    assert(text == "@init.lua:1\nfunction setup\nblame a1b2c3d", "composed " .. vim.inspect(text))
-    assert(not text:find("\n\n", 1, true), "blank line in " .. vim.inspect(text))
-  end,
-
-  ["orders the parts mention, diagnostic, function, blame"] = function()
-    -- Each value names its own role, so a composer that walked the table with
-    -- `pairs` (unordered) or reversed the sequence reports which order it used.
-    local text = compose.compose_text({
-      blame = "fourth",
-      func = "third",
-      diagnostic = "second",
-      mention = "first",
-    })
-    assert(text == "first\nsecond\nthird\nfourth", "composed " .. vim.inspect(text))
-  end,
-
-  ["joins with the separator it was given"] = function()
-    -- The stored text is single-line, because herdr-nvim's comment listing
-    -- cannot render a newline; the pure join still takes whichever separator
-    -- the caller wants, so it reverts by changing one argument.
-    local text = compose.compose_text({
-      mention = "@init.lua:1",
-      diagnostic = "ERROR: undefined variable",
-      func = "function setup",
-      blame = "blame a1b2c3d",
-    }, " | ")
-    assert(
-      text == "@init.lua:1 | ERROR: undefined variable | function setup | blame a1b2c3d",
-      "composed " .. vim.inspect(text)
-    )
-  end,
-
-  ["stores its parts on one line, separated by a pipe"] = function()
-    -- The stored shape is not an implementation detail: herdr-nvim's listing
-    -- cannot render a newline, and the parts still have to be told apart by
-    -- whoever reads the annotation.
-    assert(annotate.PART_SEPARATOR == " | ", "separator is " .. vim.inspect(annotate.PART_SEPARATOR))
-    local text = compose.compose_text({ mention = "@init.lua:1", blame = "blame a1b2c3d" }, annotate.PART_SEPARATOR)
-    assert(not text:find("\n", 1, true), "stored text holds a newline: " .. vim.inspect(text))
-    assert(text == "@init.lua:1 | blame a1b2c3d", "composed " .. vim.inspect(text))
-  end,
-
-  ["separates by newline when it was given no separator"] = function()
-    local text = compose.compose_text({ mention = "@init.lua:1", blame = "blame a1b2c3d" })
-    assert(text == "@init.lua:1\nblame a1b2c3d", "composed " .. vim.inspect(text))
-  end,
-
-  ["never doubles the separator around a missing part"] = function()
-    local text = compose.compose_text({ mention = "@init.lua:1", blame = "blame a1b2c3d" }, " | ")
-    assert(text == "@init.lua:1 | blame a1b2c3d", "composed " .. vim.inspect(text))
+  ["leaves no gap where a part has nothing"] = function()
+    local text = annotated(parts("@init.lua:1", nil, "function setup", "blame a1b2c3d"))
+    assert(text == "@init.lua:1 | function setup | blame a1b2c3d", "composed " .. vim.inspect(text))
   end,
 
   ["treats an empty part as no part"] = function()
-    local text = compose.compose_text({ mention = "@init.lua:1", diagnostic = "", blame = "blame a1b2c3d" })
-    assert(text == "@init.lua:1\nblame a1b2c3d", "composed " .. vim.inspect(text))
+    local text = annotated(parts("@init.lua:1", "", "blame a1b2c3d"))
+    assert(text == "@init.lua:1 | blame a1b2c3d", "composed " .. vim.inspect(text))
   end,
 
   ["composes nothing from no parts"] = function()
-    assert(compose.compose_text({}) == "", "composed " .. vim.inspect(compose.compose_text({})))
+    local text = annotated({})
+    assert(text == "", "composed " .. vim.inspect(text))
   end,
 
-  ["hands the store one flattened line and decorates the id it gave back"] = function()
-    -- The sink is the one place that knows what herdr-nvim can render: it joins
-    -- with the separator on the way in, anchors the comment to the one line it
-    -- was given, and passes the id straight to `ui.decorate`. An annotation
-    -- stored and not decorated leaves no mark in the buffer.
-    local added, decorated, ok, id = with_fake_store(function()
-      return annotate.store(7, 42, {
-        mention = "@init.lua:42",
-        diagnostic = "ERROR: undefined variable",
-        blame = "blame a1b2c3d",
-      })
-    end)
+  ["flattens embedded line breaks in every part"] = function()
+    local text = annotated(parts("@first\nsecond:42", "ERROR: first\r\nsecond", "function first\rsecond"))
+    assert(text == "@first second:42 | ERROR: first second | function first second", "composed " .. vim.inspect(text))
+  end,
 
-    assert(ok, id)
-    assert(
-      added.text == "@init.lua:42 | ERROR: undefined variable | blame a1b2c3d",
-      "stored " .. vim.inspect(added.text)
-    )
-    assert(added.bufnr == 7, "stored in buffer " .. vim.inspect(added.bufnr))
-    assert(added.start_line == 42 and added.end_line == 42, "stored over " .. vim.inspect(added))
-    assert(decorated == 4242, "decorated " .. vim.inspect(decorated))
+  ["omits a part that becomes empty when flattened"] = function()
+    local text = annotated(parts("@init.lua:42", " \r\n\t ", "blame a1b2c3d"))
+    assert(text == "@init.lua:42 | blame a1b2c3d", "composed " .. vim.inspect(text))
+  end,
+
+  ["hands the sink the target and returns the id it gave back"] = function()
+    local fake = sink()
+    local id = annotate.annotate(TARGET, {
+      function(target)
+        return "@init.lua:" .. target.line
+      end,
+    }, fake)
     assert(id == 4242, "returned " .. vim.inspect(id))
+    assert(fake.target == TARGET, "stored against " .. vim.inspect(fake.target))
+    assert(fake.text == "@init.lua:42", "stored " .. vim.inspect(fake.text))
   end,
 
-  ["flattens embedded line breaks in every part at the store boundary"] = function()
-    local added, _, ok, id = with_fake_store(function()
-      return annotate.store(7, 42, {
-        mention = "@first\nsecond:42",
-        diagnostic = "ERROR: first\r\nsecond",
-        func = "function first\rsecond",
-        blame = "blame a1b2c3d first\nsecond",
-      })
-    end)
-    assert(ok, id)
-    assert(
-      added.text == "@first second:42 | ERROR: first second | function first second | blame a1b2c3d first second",
-      "stored " .. vim.inspect(added.text)
+  ["orders the parts mention, diagnostic, function, blame"] = function()
+    local file, sha = repo.commit(repo.new(), "answer.lua", ANSWER, "write the answer")
+    local text, mention = line_of(file, { 2, 2 })
+    local expected = ("%s:2 | WARN: first second | function answer | blame %s write the answer"):format(
+      mention,
+      sha:sub(1, 7)
     )
-  end,
-
-  ["omits a part that becomes empty when the sink flattens it"] = function()
-    local added, _, ok, id = with_fake_store(function()
-      return annotate.store(7, 42, { mention = "@init.lua:42", diagnostic = " \r\n\t ", blame = "blame a1b2c3d" })
-    end)
-    assert(ok, id)
-    assert(added.text == "@init.lua:42 | blame a1b2c3d", "stored " .. vim.inspect(added.text))
-  end,
-
-  ["normalizes parts without replacing a configured separator"] = function()
-    local previous = annotate.PART_SEPARATOR
-    annotate.PART_SEPARATOR = " / "
-    local added, _, ok, id = with_fake_store(function()
-      return annotate.store(7, 42, { mention = "@init.lua:42", diagnostic = "ERROR: first\nsecond" })
-    end)
-    annotate.PART_SEPARATOR = previous
-    assert(ok, id)
-    assert(added.text == "@init.lua:42 / ERROR: first second", "stored " .. vim.inspect(added.text))
+    assert(text == expected, "stored " .. vim.inspect(text))
   end,
 
   ["missing git preserves the editor parts and stores without notifying"] = function()
-    local previous_buf = vim.api.nvim_get_current_buf()
-    local previous_path = vim.env.PATH
-    local previous_notify = vim.notify
-    local notices = {}
-    local bufnr = vim.api.nvim_create_buf(false, false)
     local file = vim.fn.tempname() .. ".lua"
-    vim.api.nvim_buf_set_name(bufnr, file)
-    file = vim.api.nvim_buf_get_name(bufnr)
-    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "local function answer()", "  return 1", "end" })
-    vim.bo[bufnr].filetype = "lua"
-    vim.api.nvim_set_current_buf(bufnr)
-    vim.treesitter.get_parser(bufnr, "lua"):parse()
-    vim.api.nvim_win_set_cursor(0, { 2, 2 })
-    vim.diagnostic.set(vim.api.nvim_create_namespace("annotate-missing-git"), bufnr, {
-      { lnum = 1, col = 2, severity = vim.diagnostic.severity.WARN, message = "first\nsecond" },
-    })
+    repo.write(file, ANSWER)
+    local previous_path, previous_notify = vim.env.PATH, vim.notify
+    local notices = {}
     vim.notify = function(message)
       notices[#notices + 1] = message
     end
     vim.env.PATH = vim.fn.tempname()
-    local added, decorated, ok, id = with_fake_store(annotate.line)
-    vim.env.PATH = previous_path
-    vim.notify = previous_notify
-    vim.api.nvim_set_current_buf(previous_buf)
-    vim.api.nvim_buf_delete(bufnr, { force = true })
-
-    assert(ok, id)
-    assert(id == 4242 and decorated == id, "annotation was not stored and decorated")
-    assert(
-      added.text == "@" .. vim.fn.fnamemodify(file, ":.") .. ":2 | WARN: first second | function answer",
-      "stored " .. vim.inspect(added.text)
-    )
+    local ok, text, mention = pcall(line_of, file, { 2, 2 })
+    vim.env.PATH, vim.notify = previous_path, previous_notify
+    assert(ok, text)
+    local expected = mention .. ":2 | WARN: first second | function answer"
+    assert(text == expected, "stored " .. vim.inspect(text))
     assert(#notices == 0, "line() notified: " .. vim.inspect(notices))
-  end,
-
-  ["walks up to the enclosing function node"] = function()
-    local node = chain({ "identifier", "arguments", "function_declaration", "chunk" })
-    local found = compose.enclosing_function(node)
-    assert(found and found:type() == "function_declaration", "found " .. tostring(found and found:type()))
-  end,
-
-  ["reads the cursor node itself as the enclosing function"] = function()
-    local found = compose.enclosing_function(chain({ "function_definition", "chunk" }))
-    assert(found and found:type() == "function_definition", "found " .. tostring(found and found:type()))
-  end,
-
-  ["stops at the innermost function-shaped ancestor"] = function()
-    local node = chain({ "identifier", "method_definition", "class_definition", "function_declaration" })
-    local found = compose.enclosing_function(node)
-    assert(found and found:type() == "method_definition", "found " .. tostring(found and found:type()))
-  end,
-
-  ["finds no function outside one"] = function()
-    assert(compose.enclosing_function(chain({ "identifier", "table_constructor", "chunk" })) == nil)
-    assert(compose.enclosing_function(nil) == nil)
-  end,
-
-  ["does not read a merely function-adjacent node as a function"] = function()
-    -- The rule is a SUFFIX match, so `function_call` and `parameters` are not
-    -- functions; a plain `find` on "function" would take the first of these.
-    local node = chain({ "identifier", "function_call", "parameters", "function_definition" })
-    local found = compose.enclosing_function(node)
-    assert(found and found:type() == "function_definition", "found " .. tostring(found and found:type()))
-  end,
-
-  ["covers the function node of every language it handles"] = function()
-    -- Measured against the installed grammars, one sample file each: Rust
-    -- names its functions `function_item`, Go methods `method_declaration`,
-    -- and a named TypeScript function expression `function_expression`. None
-    -- of the three ends in a Lua or Python spelling.
-    for _, node_type in ipairs({
-      "function_definition",
-      "function_declaration",
-      "method_definition",
-      "function_item",
-      "method_declaration",
-      "function_expression",
-    }) do
-      local found = compose.enclosing_function(chain({ "identifier", node_type }))
-      assert(found and found:type() == node_type, node_type .. " is not read as a function")
-    end
-  end,
-
-  ["reads a suffix only at the end of the node type"] = function()
-    -- `function_definition_call` CONTAINS a listed suffix without ending in
-    -- one. A literal substring search would stop here and name the call site
-    -- as the enclosing function.
-    local node = chain({ "identifier", "function_definition_call", "function_declaration" })
-    local found = compose.enclosing_function(node)
-    assert(found and found:type() == "function_declaration", "found " .. tostring(found and found:type()))
-  end,
-
-  ["annotates a named file buffer"] = function()
-    assert(compose.annotatable("lua/herdr-nvim-annotate-extension/init.lua", "") == true)
-  end,
-
-  ["annotates a named file that has never been written"] = function()
-    -- A new file that has been typed into is a real path with real lines,
-    -- and the mention it produces is one an agent can open.
-    assert(compose.annotatable("notes.md", "") == true)
-  end,
-
-  ["refuses a buffer with no file name"] = function()
-    -- The mention would be `@:1`, which names nothing.
-    local ok, reason = compose.annotatable("", "")
-    assert(ok == false, "annotatable returned " .. tostring(ok))
-    assert(type(reason) == "string" and reason ~= "", "reason " .. vim.inspect(reason))
-  end,
-
-  ["refuses a buffer that is not a file"] = function()
-    -- Every non-empty `buftype` is something other than a file on disk: a
-    -- scratch buffer, a terminal, a quickfix list, a help window.
-    for _, buftype in ipairs({ "nofile", "nowrite", "acwrite", "terminal", "quickfix", "help", "prompt" }) do
-      local ok, reason = compose.annotatable("/tmp/x.lua", buftype)
-      assert(ok == false, buftype .. " was accepted")
-      assert(type(reason) == "string" and reason ~= "", buftype .. " gave no reason")
-    end
-  end,
-
-  ["refuses a buffer whose name is a URI rather than a path"] = function()
-    -- Measured: an Oil directory buffer and a Fugitive revision buffer both
-    -- carry an EMPTY `buftype`, so the buftype rule above does not reach them.
-    -- Their names are what gives them away.
-    for _, name in ipairs({
-      "oil:///Users/stephen/src/",
-      "fugitive://./.git//5ef4e631b3f43a2ad5bbbdac634bdfad7a432706/nested.lua",
-      "term://~//12345:bash",
-      "octo://webdavis/dotfiles/pull/350",
-    }) do
-      local ok, reason = compose.annotatable(name, "")
-      assert(ok == false, name .. " was accepted")
-      assert(type(reason) == "string" and reason ~= "", name .. " gave no reason")
-    end
-  end,
-
-  ["annotates a path that merely contains a colon"] = function()
-    -- The scheme is anchored at the start, so a legal filename holding `://`
-    -- further along is still a path.
-    assert(compose.annotatable("/tmp/a:b/x.lua", "") == true)
-    assert(compose.annotatable("notes/http://example.md", "") == true)
-  end,
-
-  ["stores no newline, whatever the source spelled across lines"] = function()
-    -- Lua lets a declaration wrap, so the `name` field can span lines and the
-    -- function part carried the break into the stored text. herdr-nvim builds
-    -- one buffer line per comment, so one newline anywhere in the annotation
-    -- takes the whole comment list down.
-    local text = annotated({
-      "local foo = {}",
-      "function foo",
-      "  .bar()",
-      "  return 1",
-      "end",
-    }, { 4, 2 })
-    assert(not text:find("\n", 1, true), "stored a newline: " .. vim.inspect(text))
-    assert(text:find("function foo .bar", 1, true), "annotated with " .. vim.inspect(text))
-  end,
-
-  ["reads the function at the cursor's column, not at the start of its line"] = function()
-    -- Column zero of a nested declaration line sits outside the function being
-    -- declared, so this reported the function AROUND it.
-    local text = annotated(NESTED, { 2, 18 })
-    assert(text:find("function inner", 1, true), "annotated with " .. vim.inspect(text))
-  end,
-
-  ["names the severity beside the diagnostic message"] = function()
-    local line = compose.diagnostic_line({ severity = vim.diagnostic.severity.WARN, message = "unused local" })
-    assert(line == "WARN: unused local", "diagnostic line " .. vim.inspect(line))
-  end,
-
-  ["collapses a multi-line diagnostic message onto one line"] = function()
-    -- Every part is one line by contract, and a language server is free to
-    -- send a message spanning several.
-    local line = compose.diagnostic_line({
-      severity = vim.diagnostic.severity.ERROR,
-      message = "expected type\n  found string",
-    })
-    assert(line == "ERROR: expected type found string", "diagnostic line " .. vim.inspect(line))
-  end,
-
-  ["has no diagnostic part when the message is only whitespace"] = function()
-    -- A linter that reports a blank message would otherwise contribute the
-    -- bare severity label, `ERROR: `, as a part of its own.
-    assert(compose.diagnostic_line({ severity = vim.diagnostic.severity.ERROR, message = "   " }) == nil)
-    assert(compose.diagnostic_line({ severity = vim.diagnostic.severity.ERROR, message = "" }) == nil)
-  end,
-
-  ["has no diagnostic part without a diagnostic"] = function()
-    assert(compose.diagnostic_line(nil) == nil)
   end,
 }

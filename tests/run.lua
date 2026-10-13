@@ -2,8 +2,8 @@
 --
 -- Usage: nvim --headless --clean -l tests/run.lua [<name>_spec]
 --
--- `--clean` keeps plugins out. Store tests use a fake herdr-nvim in
--- `package.loaded`; editor tests use Neovim's diagnostic and parser APIs.
+-- `--clean` keeps plugins out. Store tests use the fake herdr-nvim under
+-- tests/herdr-nvim; editor tests use Neovim's diagnostic and parser APIs.
 -- A spec file returns a table of `["what it does"] = function() ... end`
 -- cases and asserts with plain `assert`. No plenary, no busted.
 
@@ -11,7 +11,12 @@ local tests_dir = arg[0]:match("(.*)/") or "."
 local project_root = tests_dir .. "/.."
 local only = arg[1]
 
-package.path = ("%s/lua/?.lua;%s/lua/?/init.lua;%s"):format(project_root, project_root, package.path)
+package.path = ("%s/lua/?.lua;%s/lua/?/init.lua;%s/?.lua;%s"):format(
+  project_root,
+  project_root,
+  tests_dir,
+  package.path
+)
 
 local spec_files
 if only then
