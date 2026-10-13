@@ -105,22 +105,16 @@ function M.enclosing_function(node)
   return nil
 end
 
----The blame part: the line's commit, named when the repository can name it.
----
----`git.head_commit` describes HEAD and nothing else, so its summary belongs to
----the blamed line only when the blame SHA *is* HEAD. Attached any other time it
----would caption the line with an unrelated commit's message.
----@param sha string? the blame SHA, or nil when the line has none
----@param commit { hash: string, summary: string? }? HEAD, as `git.head_commit` returns it
+---@param commit { sha: string, summary: string? }?
 ---@return string?
-function M.blame_line(sha, commit)
-  if not sha then
+function M.blame_line(commit)
+  if not commit then
     return nil
   end
 
-  local short = sha:sub(1, 7)
+  local short = commit.sha:sub(1, 7)
 
-  if commit and commit.summary and commit.hash and vim.startswith(sha, commit.hash) then
+  if commit.summary then
     return ("blame %s %s"):format(short, commit.summary)
   end
 

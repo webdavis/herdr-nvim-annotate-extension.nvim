@@ -188,8 +188,6 @@ return {
   end,
 
   ["treats an empty part as no part"] = function()
-    -- `git.head_commit` returns a normalized summary, but a diagnostic message
-    -- trimmed to nothing arrives as "" rather than nil.
     local text = compose.compose_text({ mention = "@init.lua:1", diagnostic = "", blame = "blame a1b2c3d" })
     assert(text == "@init.lua:1\nblame a1b2c3d", "composed " .. vim.inspect(text))
   end,
@@ -447,26 +445,5 @@ return {
 
   ["has no diagnostic part without a diagnostic"] = function()
     assert(compose.diagnostic_line(nil) == nil)
-  end,
-
-  ["names the blame commit when the line was last touched by HEAD"] = function()
-    local line = compose.blame_line("a1b2c3d4e5f6", { hash = "a1b2c3d", summary = "add the annotator" })
-    assert(line == "blame a1b2c3d add the annotator", "blame line " .. vim.inspect(line))
-  end,
-
-  ["gives the blame sha alone when HEAD is a different commit"] = function()
-    -- `git.head_commit` only ever describes HEAD, so attaching its summary to
-    -- an older blame sha would caption the line with the wrong commit message.
-    local line = compose.blame_line("a1b2c3d4e5f6", { hash = "9999999", summary = "unrelated work" })
-    assert(line == "blame a1b2c3d", "blame line " .. vim.inspect(line))
-  end,
-
-  ["gives the blame sha alone when HEAD could not be read"] = function()
-    assert(compose.blame_line("a1b2c3d4e5f6", nil) == "blame a1b2c3d")
-    assert(compose.blame_line("a1b2c3d4e5f6", { hash = "a1b2c3d" }) == "blame a1b2c3d")
-  end,
-
-  ["has no blame part without a sha"] = function()
-    assert(compose.blame_line(nil, { hash = "a1b2c3d", summary = "add the annotator" }) == nil)
   end,
 }

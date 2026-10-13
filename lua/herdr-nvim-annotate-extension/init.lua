@@ -64,20 +64,9 @@ local function function_part(bufnr, line, column)
 end
 
 local function blame_part(name, line)
-  -- Both calls return `nil, message` on failure (a file outside a repository,
-  -- a line not committed yet); the message is the keymap layer's to report,
-  -- and here a line the annotator cannot blame is a part it does not write.
-  local sha = git.blame_sha({ file = name, line = line })
-  if not sha then
-    return nil
-  end
+  local commit = git.blame({ file = name, line = line })
 
-  -- Bound to one value on purpose: `head_commit` answers `(commit, err)`, and
-  -- passing the call straight through would spread its error message into
-  -- `blame_line`'s next parameter.
-  local commit = git.head_commit(name)
-
-  return compose.blame_line(sha, commit)
+  return compose.blame_line(commit)
 end
 
 -- ╭──────╮
