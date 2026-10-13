@@ -18,7 +18,7 @@ function M.annotatable(name, buftype)
   end
 
   if buftype ~= "" then
-    return false, ("this is a %s buffer, not a file"):format(buftype)
+    return false, ("this buffer is not a file on disk (buftype=%s)"):format(buftype)
   end
 
   if name:match(URI_NAME) then
