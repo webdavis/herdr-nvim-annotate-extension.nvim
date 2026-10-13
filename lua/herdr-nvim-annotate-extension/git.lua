@@ -4,8 +4,6 @@
 
 local M = {}
 
-local compose = require("herdr-nvim-annotate-extension.compose")
-
 -- ╭────────────────╮
 -- │  The shell seam │
 -- ╰────────────────╯
@@ -29,14 +27,7 @@ function M.runner(opts)
   end
   local result = process:wait()
 
-  -- stderr joins the value only on failure, so a tool that warns on stderr
-  -- cannot glue its notice onto output the caller is about to read.
-  local output = result.stdout or ""
-  if result.code ~= 0 then
-    output = output .. (result.stderr or "")
-  end
-
-  return result.code, compose.trim(output)
+  return result.code, vim.trim(result.stdout or "")
 end
 
 -- ╭──────────╮
@@ -70,17 +61,10 @@ end
 -- after the token is what keeps a `fatal:` from matching as hex on its leading
 -- letters.
 local function parse_blame_porcelain(text)
-  local sha = (text or ""):match("^(%x+)%s")
+  local sha = text:match("^(%x+)%s")
 
-  if not sha then
-    return nil, "no blame line to read"
-  end
-
-  -- What git blame prints as the SHA of a line that is not committed yet is a
-  -- SHA of zeros: forty of them in a SHA-1 repository and sixty-four in a
-  -- SHA-256 one, so the digits are what identify it and never their count.
-  if sha:match("^0+$") then
-    return nil, "not committed yet"
+  if not sha or sha:match("^0+$") then
+    return nil
   end
 
   local summary = text:match("\nsummary ([^\n]*)")
@@ -133,7 +117,6 @@ end
 
 ---@param opts { file: string, line: integer }
 ---@return { sha: string, summary: string? }? commit
----@return string? err
 function M.blame(opts)
   local file = opts.file
   local line = opts.line
@@ -156,7 +139,7 @@ function M.blame(opts)
   local code, output = M.runner({ cmd = cmd, stdin = contents, cwd = file_dir(blamed) })
 
   if code ~= 0 then
-    return nil, output
+    return nil
   end
 
   return parse_blame_porcelain(output)

@@ -78,21 +78,6 @@ return {
     assert(code == 0 and output == "answer", vim.inspect({ code, output }))
   end,
 
-  ["retains command stderr when the spawned command fails"] = function()
-    local previous = vim.system
-    vim.system = function()
-      return {
-        wait = function()
-          return { code = 128, stdout = "out\n", stderr = "fatal: no repository\n" }
-        end,
-      }
-    end
-    local ok, code, output = pcall(git.runner, { cmd = { "git", "status" } })
-    vim.system = previous
-    assert(ok, code)
-    assert(code == 128 and output == "out\nfatal: no repository", vim.inspect({ code, output }))
-  end,
-
   ["blames an unchanged crlf file as committed"] = function()
     local file = committed("first line\r\nsecond line\r\n")
     assert(blamed({ file = file, line = 2 }) == "write the notes", vim.inspect(git.blame({ file = file, line = 2 })))
