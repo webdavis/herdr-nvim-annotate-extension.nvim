@@ -1,6 +1,3 @@
--- The git edge, narrowed to the two questions an annotation asks: which commit
--- last touched this line, and what is HEAD called.
---
 -- No `vim.fn.system`, no shell text, and no dependency on a git plugin being
 -- installed: every call is argv words through `vim.system`, behind one
 -- replaceable `M.runner` field.
@@ -69,9 +66,9 @@ local function file_dir(path)
   return vim.fn.isdirectory(dir) == 1 and dir or nil
 end
 
--- The first porcelain line is `<sha> <orig-line> <final-line> <count>`. Only the
--- SHA is read; `%s` after the token is what keeps a `fatal:` from matching as
--- hex on its leading letters.
+-- The first porcelain line is `<sha> <orig-line> <final-line> <count>`. `%s`
+-- after the token is what keeps a `fatal:` from matching as hex on its leading
+-- letters.
 local function parse_blame_porcelain(text)
   local sha = (text or ""):match("^(%x+)%s")
 
@@ -86,7 +83,9 @@ local function parse_blame_porcelain(text)
     return nil, "not committed yet"
   end
 
-  return sha
+  local summary = text:match("\nsummary ([^\n]*)")
+
+  return { sha = sha, summary = summary ~= "" and summary or nil }
 end
 
 -- What each `fileformat` puts between lines when the buffer is written out.
@@ -132,11 +131,10 @@ end
 -- │  API │
 -- ╰──────╯
 
----The SHA of the commit that last touched `line` of `file`.
 ---@param opts { file: string, line: integer }
----@return string? sha
+---@return { sha: string, summary: string? }? commit
 ---@return string? err
-function M.blame_sha(opts)
+function M.blame(opts)
   local file = opts.file
   local line = opts.line
 
@@ -162,32 +160,6 @@ function M.blame_sha(opts)
   end
 
   return parse_blame_porcelain(output)
-end
-
----HEAD's short hash and subject in the repository holding `file`.
----
----One `git log` rather than a `rev-parse` and a `log`: the hash and the subject
----are two fields of one commit, and asking twice forks twice on every
----annotation. A commit with no subject line yields a hash and no summary, which
----is what `compose.blame_line` renders as a bare SHA.
----@param file string the file whose repository to read HEAD from
----@return { hash: string, summary: string? }?
----@return string? err
-function M.head_commit(file)
-  local code, output = M.runner({ cmd = { "git", "log", "-1", "--pretty=%h%n%s" }, cwd = file_dir(file) })
-
-  if code ~= 0 then
-    return nil, output
-  end
-
-  local hash, summary = output:match("^(%S+)\n?(.*)$")
-  if not hash then
-    return nil, "HEAD has no commit to read"
-  end
-
-  summary = compose.one_line(summary)
-
-  return { hash = hash, summary = summary ~= "" and summary or nil }
 end
 
 return M
