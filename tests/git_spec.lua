@@ -78,4 +78,11 @@ return {
       assert(commit == nil, #zeros .. " zeros blamed as " .. vim.inspect(commit))
     end
   end,
+
+  ["reports nothing for output that does not open with a sha and a space"] = function()
+    local commit = git.blame({ file = vim.fn.tempname() .. ".txt", line = 1 }, function()
+      return 0, "fatal: no such path"
+    end)
+    assert(commit == nil, "blamed as " .. vim.inspect(commit))
+  end,
 }

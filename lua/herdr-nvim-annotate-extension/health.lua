@@ -1,8 +1,3 @@
--- `:checkhealth herdr-nvim-annotate-extension`
---
--- The comment store is required. Git is optional; without it the annotation
--- omits blame.
-
 local M = {}
 
 function M.check()
@@ -12,8 +7,6 @@ function M.check()
   if ok then
     vim.health.ok("herdr-nvim is loadable")
   else
-    -- The first line only: a `require` failure carries the whole Lua search
-    -- path behind it, which buries the one sentence that matters.
     local first_line = (tostring(err):match("^[^\n]*"):gsub("^.-%.lua:%d+: ", ""))
     vim.health.error("herdr-nvim is not loadable: " .. first_line, {
       "Install ChmaraX/herdr-nvim, or declare it as a dependency of this plugin.",

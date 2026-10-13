@@ -23,6 +23,11 @@ return {
     end
   end,
 
+  ["says in a sentence that a buffer with a buftype is not a file on disk"] = function()
+    local _, reason = target.annotatable("/tmp/x.lua", "nofile")
+    assert(reason == "this buffer is not a file on disk (buftype=nofile)", "reason " .. vim.inspect(reason))
+  end,
+
   ["refuses a buffer whose name is a URI rather than a path"] = function()
     for _, name in ipairs({
       "oil:///Users/stephen/src/",

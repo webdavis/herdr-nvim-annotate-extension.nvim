@@ -10,12 +10,12 @@ herdr-nvim's own keys list it, paste it and send it. Nothing here types at an ag
 A stored annotation looks like this:
 
 ```
-@lua/config/lsp.lua:118 | ERROR: undefined global `vim_opt` | function M.setup | blame 4f2a91c wire the
-language servers
+@lua/lsp.lua:118 | ERROR: undefined global `vim_opt` | function M.setup | blame 4f2a91c wire servers
 ```
 
 A part that does not apply is left out instead of written empty, so a line with no diagnostic and no
-commit behind it annotates as `@lua/config/lsp.lua:118` on its own.
+commit behind it annotates as `@lua/lsp.lua:118` on its own. A file outside a Git repository, or a
+line that is unsaved or not yet committed, gets no blame part.
 
 ## Requirements
 
@@ -35,15 +35,19 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
   dependencies = { { "ChmaraX/herdr-nvim", opts = {} } },
   cmd = "HerdrAnnotateLine",
   keys = {
-    { "<leader>Cx", "<cmd>HerdrAnnotateLine<cr>", desc = "Annotate line with diagnostic and blame" },
+    {
+      "<leader>Cx",
+      "<cmd>HerdrAnnotateLine<cr>",
+      desc = "Annotate line with diagnostic and blame",
+    },
   },
 }
 ```
 
 Lazy initializes herdr-nvim through the dependency's `opts` table, which enables its default list,
-paste, and send mappings. The `cmd` entry loads the extension on the first `:HerdrAnnotateLine` call.
-`<leader>Cx` is an example: bind whichever key is free in your layout. The extension has no `setup()`
-function.
+paste, and send mappings. The `cmd` entry loads the extension on the first `:HerdrAnnotateLine`
+call. `<leader>Cx` is an example: bind whichever key is free in your layout. The extension has no
+`setup()` function.
 
 ## Usage
 
@@ -51,9 +55,9 @@ function.
 annotation belongs to herdr-nvim, whose keys list the pending comments, paste them into an agent's
 input, or send them.
 
-Three kinds of buffer produce no file reference worth annotating, and the command refuses them with a
-message saying which one it hit: a buffer with no name, a buffer with any `buftype` (a terminal, a
-quickfix list, a help window), and a buffer whose name is a URI rather than a path, such as an
+Three kinds of buffer produce no file reference worth annotating, and the command refuses them with
+a message saying which one it hit: a buffer with no name, a buffer with any `buftype` (a terminal,
+a quickfix list, a help window), and a buffer whose name is a URI rather than a path, such as an
 `oil://` directory listing.
 
 Run `:checkhealth herdr-nvim-annotate-extension` to see whether herdr-nvim is loadable and whether

@@ -22,12 +22,12 @@ list it, paste it and send it. Nothing here types at an agent.
 
 A stored annotation looks like this: >
 
-    @lua/config/lsp.lua:118 | ERROR: undefined global `vim_opt` |
-    function M.setup | blame 4f2a91c wire the language servers
+    @lua/lsp.lua:118 | ERROR: undefined global `vim_opt` | function M.setup | blame 4f2a91c wire servers
 <
 A part that does not apply is left out instead of written empty, so a line
-with no diagnostic and no commit behind it annotates as
-`@lua/config/lsp.lua:118` on its own.
+with no diagnostic and no commit behind it annotates as `@lua/lsp.lua:118` on
+its own. A file outside a Git repository, or a line that is unsaved or not yet
+committed, gets no blame part.
 
 ==============================================================================
 2. REQUIREMENTS                   *herdr-nvim-annotate-extension-requirements*
