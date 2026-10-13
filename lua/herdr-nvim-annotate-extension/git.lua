@@ -42,9 +42,8 @@ end
 ---`git blame` on an absolute path inside it reports
 ---`fatal: not a git repository`.
 ---
----Symlinks are resolved first, because git answers for the real file: a link
----and its target can sit in two different checkouts. Answers nil for a path
----with no directory of its own, which leaves nvim's cwd in place.
+---Answers nil for a path with no directory of its own, which leaves nvim's cwd
+---in place.
 ---@param path string?
 ---@return string?
 local function file_dir(path)
@@ -52,7 +51,7 @@ local function file_dir(path)
     return nil
   end
 
-  local dir = vim.fn.fnamemodify(vim.uv.fs_realpath(path) or path, ":p:h")
+  local dir = vim.fn.fnamemodify(path, ":p:h")
 
   return vim.fn.isdirectory(dir) == 1 and dir or nil
 end
