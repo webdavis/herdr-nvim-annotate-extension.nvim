@@ -63,8 +63,29 @@ local function function_part(bufnr, line, column)
   return "function " .. compose.one_line(vim.treesitter.get_node_text(name, bufnr))
 end
 
-local function blame_part(name, line)
-  local commit = git.blame({ file = name, line = line })
+local LINE_SEPARATOR = { unix = "\n", dos = "\r\n", mac = "\r" }
+
+local function unsaved_contents(bufnr)
+  if not vim.bo[bufnr].modified then
+    return nil
+  end
+
+  local separator = vim.bo[bufnr].binary and "\n" or LINE_SEPARATOR[vim.bo[bufnr].fileformat]
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+  if separator == "\r" then
+    lines = vim.tbl_map(function(line)
+      return (line:gsub("\r", "\n"))
+    end, lines)
+  end
+
+  local text = table.concat(lines, separator)
+
+  return vim.bo[bufnr].endofline and text .. separator or text
+end
+
+local function blame_part(bufnr, name, line)
+  local commit = git.blame({ file = name, line = line, contents = unsaved_contents(bufnr) })
 
   return compose.blame_line(commit)
 end
@@ -114,7 +135,7 @@ function M.line()
     mention = ("@%s:%d"):format(file, line),
     diagnostic = diagnostic_part(bufnr, line),
     func = function_part(bufnr, line, column),
-    blame = blame_part(name, line),
+    blame = blame_part(bufnr, name, line),
   })
 end
 
