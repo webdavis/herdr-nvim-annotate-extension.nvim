@@ -48,16 +48,20 @@ return {
     assert(found == "function_definition", "found " .. tostring(found))
   end,
 
-  ["covers the function node of every language it handles"] = function()
-    for _, node_type in ipairs({
-      "function_definition",
-      "function_declaration",
-      "method_definition",
-      "function_item",
-      "method_declaration",
-      "function_expression",
+  ["reads the function nodes each handled language's grammar names"] = function()
+    for language, node_types in pairs({
+      lua = { "function_declaration", "function_definition" },
+      python = { "function_definition" },
+      bash = { "function_definition" },
+      rust = { "function_item" },
+      go = { "function_declaration", "method_declaration" },
+      swift = { "function_declaration" },
+      typescript = { "function_declaration", "function_expression", "method_definition" },
     }) do
-      assert(found_type({ "identifier", node_type }) == node_type, node_type .. " is not read as a function")
+      for _, node_type in ipairs(node_types) do
+        local found = found_type({ "identifier", node_type })
+        assert(found == node_type, ("%s's %s is not read as a function"):format(language, node_type))
+      end
     end
   end,
 
