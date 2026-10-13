@@ -35,6 +35,11 @@ local function edited(file)
   return vim.api.nvim_get_current_buf()
 end
 
+local function edited_as_mac(file)
+  vim.cmd("silent edit! ++ff=mac " .. vim.fn.fnameescape(file))
+  return vim.api.nvim_get_current_buf()
+end
+
 local function answering(output)
   return function()
     return 0, output
@@ -80,6 +85,14 @@ return {
   ["blames an unmodified latin-1 file as committed"] = function()
     local file, sha = repo.committed("caf\233\n")
     local part = part_of(edited(file))
+    assert(part == "blame " .. sha:sub(1, 7) .. " write the notes", "blame part " .. vim.inspect(part))
+  end,
+
+  ["blames a modified mac-format line that holds a line feed as committed"] = function()
+    local file, sha = repo.committed("first\nhalf\rsecond line\r")
+    local bufnr = edited_as_mac(file)
+    vim.api.nvim_buf_set_lines(bufnr, 1, 2, false, { "changed" })
+    local part = part_of(bufnr)
     assert(part == "blame " .. sha:sub(1, 7) .. " write the notes", "blame part " .. vim.inspect(part))
   end,
 }
