@@ -64,22 +64,16 @@ git is on `PATH`.
 ```lua
 local annotate = require("herdr-nvim-annotate-extension")
 
-annotate.line()                      --> id, or nil plus the reason the buffer was refused
-annotate.store(bufnr, line, parts)   --> id, after joining the parts and decorating them
-annotate.PART_SEPARATOR              --> " | "
+annotate.line()                         --> id, or nil plus the reason the buffer was refused
+annotate.annotate(target, parts, sink)  --> the id sink.store(target, text) returns
 ```
 
 `line()` notifies nothing, which is what lets a config route a refusal through its own error
 handling. `:HerdrAnnotateLine` is the wrapper that reports one.
 
-`store()` collapses whitespace within each part and omits parts that become empty before joining
-them. herdr-nvim's comment list needs a single line per comment: `nvim_buf_set_lines` rejects embedded
-newlines. `PART_SEPARATOR` controls the text between parts. Change it to `"\n"` once herdr-nvim
-supports multiline comments.
-
-`require("herdr-nvim-annotate-extension.compose")` holds the pure half: `compose_text`,
-`enclosing_function`, `blame_line`, `diagnostic_line` and `annotatable`. None of them touch a buffer,
-so you can call and test them on their own.
+`annotate()` calls each part with the target, collapses whitespace in each answer, drops empty ones
+and joins the rest with `" | "`. herdr-nvim's comment list needs a single line per comment:
+`nvim_buf_set_lines` rejects embedded newlines.
 
 ## Tests
 
@@ -89,7 +83,8 @@ nvim --headless --clean -l tests/run.lua
 
 `--clean` keeps plugins out of the run. The suite covers composition, the store boundary, Git
 command results, and selected editor paths using Neovim's diagnostic and parser APIs. The store uses
-a fake herdr-nvim in `package.loaded`; the missing-Git case runs with an empty executable search path.
+the fake herdr-nvim in `tests/herdr-nvim`; the missing-Git case runs with an empty executable search
+path.
 
 ## License
 

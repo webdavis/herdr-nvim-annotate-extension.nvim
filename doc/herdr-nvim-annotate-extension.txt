@@ -90,31 +90,18 @@ line()                  Annotate the cursor's line. Returns the new comment's
                         a refusal through its own error handling.
                         |:HerdrAnnotateLine| is the wrapper that reports one.
 
-                                      *herdr-nvim-annotate-extension.store()*
-store({bufnr}, {line}, {parts})
-                        Collapse whitespace within each part, omit parts that
-                        become empty, and join them with `PART_SEPARATOR`
-                        below. Store the result against {line} of {bufnr} and
-                        decorate it.
-                        Returns the new comment's id. {parts} is a table with
-                        any of `mention`, `diagnostic`, `func` and `blame`; a
-                        missing one contributes nothing at all.
-
-                             *herdr-nvim-annotate-extension.PART_SEPARATOR*
-PART_SEPARATOR          What goes between the parts of a stored annotation,
-                        " | " by default.
+                                    *herdr-nvim-annotate-extension.annotate()*
+annotate({target}, {parts}, {sink})
+                        Call each of {parts} with {target}, collapse
+                        whitespace in each answer, drop empty ones, and join
+                        the rest with " | ". Hand the result to
+                        `sink.store(target, text)` and return the id it gives
+                        back.
 
                         The parts land on a single line because herdr-nvim's
                         comment list builds one buffer line per comment, and
                         |nvim_buf_set_lines()| rejects a string holding a
-                        newline. Set this to "\n" once herdr-nvim can render a
-                        multi-line comment, or to anything else you would
-                        rather read.
-
-The pure half lives in `herdr-nvim-annotate-extension.compose`:
-`compose_text`, `enclosing_function`, `blame_line`, `diagnostic_line` and
-`annotatable`. None of them touch a buffer, so you can call and test them on
-their own.
+                        newline.
 
 ==============================================================================
 6. HEALTH                               *herdr-nvim-annotate-extension-health*

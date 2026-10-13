@@ -76,8 +76,9 @@ end
 -- ╰──────╯
 
 ---@param opts { file: string, line: integer, contents: string? }
+---@param run? fun(opts: { cmd: string[], stdin: string?, cwd: string? }): integer, string
 ---@return { sha: string, summary: string? }? commit
-function M.blame(opts)
+function M.blame(opts, run)
   local file = opts.file
   local line = opts.line
 
@@ -96,7 +97,7 @@ function M.blame(opts)
   end
   vim.list_extend(cmd, { "--", blamed })
 
-  local code, output = M.runner({ cmd = cmd, stdin = contents, cwd = file_dir(blamed) })
+  local code, output = (run or M.runner)({ cmd = cmd, stdin = contents, cwd = file_dir(blamed) })
 
   if code ~= 0 then
     return nil

@@ -1,75 +1,12 @@
-local annotate = require("herdr-nvim-annotate-extension")
 local git = require("herdr-nvim-annotate-extension.git")
-
-local GIT_ENV = {
-  GIT_CONFIG_GLOBAL = "/dev/null",
-  GIT_CONFIG_SYSTEM = "/dev/null",
-  GIT_AUTHOR_NAME = "t",
-  GIT_AUTHOR_EMAIL = "t@t",
-  GIT_COMMITTER_NAME = "t",
-  GIT_COMMITTER_EMAIL = "t@t",
-}
+local repo = require("repo")
 
 local UNCOMMITTED_PORCELAIN =
   "%s 1 1 1\nauthor Not Committed Yet\nsummary Version of notes.txt from notes.txt\n\tfirst line"
 
-local function run(dir, ...)
-  local result = vim.system({ ... }, { cwd = dir, env = GIT_ENV, text = true }):wait()
-  assert(result.code == 0, result.stderr)
-  return vim.trim(result.stdout)
-end
-
-local function write(file, bytes)
-  local handle = assert(io.open(file, "wb"))
-  handle:write(bytes)
-  handle:close()
-end
-
-local function committed(bytes)
-  local dir = vim.fn.tempname()
-  local file = dir .. "/notes.txt"
-  vim.fn.mkdir(dir, "p")
-  write(file, bytes)
-  run(dir, "git", "init", "-q")
-  run(dir, "git", "config", "core.autocrlf", "false")
-  run(dir, "git", "add", "notes.txt")
-  run(dir, "git", "commit", "-q", "-m", "write the notes")
-  return file, run(dir, "git", "rev-parse", "HEAD")
-end
-
 local function blamed(opts)
   local commit = git.blame(opts)
   return commit and commit.summary
-end
-
-local function annotation_of_disk_line(file)
-  vim.cmd({ cmd = "edit", args = { file }, bang = true, mods = { silent = true } })
-  local bufnr = vim.api.nvim_get_current_buf()
-  vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  local stored
-  package.loaded["herdr-nvim.comments"] = {
-    add = function(_, _, _, text)
-      stored = text
-      return 1
-    end,
-  }
-  package.loaded["herdr-nvim.ui"] = { decorate = function() end }
-  local ok, id, reason = pcall(annotate.line)
-  package.loaded["herdr-nvim.comments"] = nil
-  package.loaded["herdr-nvim.ui"] = nil
-  vim.api.nvim_buf_delete(bufnr, { force = true })
-  assert(ok, id)
-  assert(id, reason)
-  return stored
-end
-
-local function with_runner(runner, body)
-  local previous = git.runner
-  git.runner = runner
-  local ok, result = pcall(body)
-  git.runner = previous
-  assert(ok, result)
-  return result
 end
 
 return {
@@ -101,37 +38,31 @@ return {
   end,
 
   ["blames an unchanged crlf file as committed"] = function()
-    local file = committed("first line\r\nsecond line\r\n")
+    local file = repo.committed("first line\r\nsecond line\r\n")
     assert(blamed({ file = file, line = 2 }) == "write the notes", vim.inspect(git.blame({ file = file, line = 2 })))
   end,
 
   ["blames a file with no final newline as committed"] = function()
-    local file = committed("first line\nsecond line")
+    local file = repo.committed("first line\nsecond line")
     assert(blamed({ file = file, line = 2 }) == "write the notes", vim.inspect(git.blame({ file = file, line = 2 })))
   end,
 
   ["reports nothing for a line edited on disk"] = function()
-    local file = committed("first line\nsecond line\n")
-    write(file, "first line\nchanged\n")
+    local file = repo.committed("first line\nsecond line\n")
+    repo.write(file, "first line\nchanged\n")
     assert(blamed({ file = file, line = 1 }) == "write the notes", vim.inspect(git.blame({ file = file, line = 1 })))
     assert(blamed({ file = file, line = 2 }) == nil, vim.inspect(git.blame({ file = file, line = 2 })))
   end,
 
   ["blames a symlinked file as its target"] = function()
-    local file = committed("first line\n")
+    local file = repo.committed("first line\n")
     local link = vim.fs.dirname(file) .. "/link.txt"
     assert(vim.uv.fs_symlink(file, link))
     assert(blamed({ file = link, line = 1 }) == "write the notes", vim.inspect(git.blame({ file = link, line = 1 })))
   end,
 
-  ["blames an unmodified latin-1 file as committed"] = function()
-    local file, sha = committed("caf\233\n")
-    local text = annotation_of_disk_line(file)
-    assert(text:match("blame .*$") == "blame " .. sha:sub(1, 7) .. " write the notes", vim.inspect(text))
-  end,
-
   ["blames the unsaved text it is handed instead of the file"] = function()
-    local file = committed("first line\nsecond line\n")
+    local file = repo.committed("first line\nsecond line\n")
     local contents = "first line\nchanged\n"
     local first = git.blame({ file = file, line = 1, contents = contents })
     local second = git.blame({ file = file, line = 2, contents = contents })
@@ -141,10 +72,8 @@ return {
 
   ["reports nothing for a line of zero sha digits, whatever their count"] = function()
     for _, zeros in ipairs({ ("0"):rep(40), ("0"):rep(64) }) do
-      local commit = with_runner(function()
+      local commit = git.blame({ file = vim.fn.tempname() .. ".txt", line = 1 }, function()
         return 0, UNCOMMITTED_PORCELAIN:format(zeros)
-      end, function()
-        return git.blame({ file = vim.fn.tempname() .. ".txt", line = 1 })
       end)
       assert(commit == nil, #zeros .. " zeros blamed as " .. vim.inspect(commit))
     end

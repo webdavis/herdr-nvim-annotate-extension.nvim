@@ -8,13 +8,13 @@ local M = {}
 function M.check()
   vim.health.start("herdr-nvim-annotate-extension")
 
-  local ok, err = pcall(require, "herdr-nvim.comments")
+  local ok, err = pcall(require, "herdr-nvim-annotate-extension.sink")
   if ok then
     vim.health.ok("herdr-nvim is loadable")
   else
     -- The first line only: a `require` failure carries the whole Lua search
     -- path behind it, which buries the one sentence that matters.
-    local first_line = tostring(err):match("^[^\n]*")
+    local first_line = (tostring(err):match("^[^\n]*"):gsub("^.-%.lua:%d+: ", ""))
     vim.health.error("herdr-nvim is not loadable: " .. first_line, {
       "Install ChmaraX/herdr-nvim, or declare it as a dependency of this plugin.",
     })
